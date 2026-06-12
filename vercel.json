@@ -1,19 +1,9 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "frontend/package.json",
-      "use": "@vercel/static-build"
-    },
-    {
-      "src": "backend/main.py",
-      "use": "@vercel/python"
-    }
-  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/backend/main.py"
+      "destination": "https://api-nexabi.romitech.me/api/$1"
     },
     {
       "source": "/(.*)",
