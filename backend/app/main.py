@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.config import CSV_FILE_PATH, CORS_ORIGINS
+from app.config import CSV_FILE_PATH
 from app.database import engine, get_db
 from app.models import Base, User, CustomerCluster
 from app.schemas import UserCreate, Token, CustomerCreate
@@ -15,16 +15,11 @@ from app.analytics_routes import router as analytics_ext_router
 
 app = FastAPI(title="NexaBI Backend API Service")
 
-cors_origins = CORS_ORIGINS
-allow_credentials = True
-if "*" in cors_origins:
-    cors_origins = ["*"]
-    allow_credentials = False
-
+# SOLUSI CORS: Diatur terbuka lebar agar bisa diakses dari domain Vercel mana pun
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=allow_credentials,
+    allow_origins=["*"],
+    allow_credentials=False,  # Wajib False jika origins bernilai ["*"] agar browser tidak memblokir
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -37,7 +32,11 @@ app.include_router(analytics_ext_router)
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
-    seed_data(CSV_FILE_PATH)
+    try:
+        # Menghindari error ganda jika data seeder sudah pernah masuk ke database
+        seed_data(CSV_FILE_PATH)
+    except Exception as e:
+        print(f"Seeder skipped or already executed: {e}")
 
 # ENDPOINT AUTENTIKASI (USER MANAGEMENT)
 @app.post("/api/auth/register", status_code=status.HTTP_201_CREATED, tags=["Authentication"])
@@ -136,3 +135,6 @@ def delete_customer(customer_id: str, db: Session = Depends(get_db), current_use
     db.delete(customer)
     db.commit()
     return {"message": f"Data customer dengan ID {customer_id} berhasil dihapus dari sistem"}
+
+# Menambahkan handler eksplisit di tingkat akar untuk integrasi Vercel Serverless
+handler = app
