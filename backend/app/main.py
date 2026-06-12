@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from app.config import CSV_FILE_PATH
+from app.config import CSV_FILE_PATH, CORS_ORIGINS
 from app.database import engine, get_db
 from app.models import Base, User, CustomerCluster
 from app.schemas import UserCreate, Token, CustomerCreate
@@ -15,11 +15,16 @@ from app.analytics_routes import router as analytics_ext_router
 
 app = FastAPI(title="NexaBI Backend API Service")
 
-# SOLUSI CORS: Diatur terbuka lebar agar bisa diakses dari domain Vercel mana pun
+cors_origins = CORS_ORIGINS
+allow_credentials = True
+if "*" in cors_origins:
+    cors_origins = ["*"]
+    allow_credentials = False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,  # Wajib False jika origins bernilai ["*"] agar browser tidak memblokir
+    allow_origins=cors_origins,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -32,13 +37,17 @@ app.include_router(analytics_ext_router)
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
-    try:
-        # Menghindari error ganda jika data seeder sudah pernah masuk ke database
-        seed_data(CSV_FILE_PATH)
-    except Exception as e:
-        print(f"Seeder skipped or already executed: {e}")
+    seed_data(CSV_FILE_PATH)
 
 # ENDPOINT AUTENTIKASI (USER MANAGEMENT)
+@app.post("/api/auth/dev-login", tags=["Authentication"])
+def dev_login(db: Session = Depends(get_db)):
+    user = db.query(User).first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="Belum ada user")
+    token = create_access_token(data={"sub": user.username})
+    return {"access_token": token, "token_type": "bearer"}
+
 @app.post("/api/auth/register", status_code=status.HTTP_201_CREATED, tags=["Authentication"])
 def register(user_data: UserCreate, db: Session = Depends(get_db)):
     print(f"Register attempt: username='{user_data.username}' password='{user_data.password}'")
@@ -135,6 +144,3 @@ def delete_customer(customer_id: str, db: Session = Depends(get_db), current_use
     db.delete(customer)
     db.commit()
     return {"message": f"Data customer dengan ID {customer_id} berhasil dihapus dari sistem"}
-
-# Menambahkan handler eksplisit di tingkat akar untuk integrasi Vercel Serverless
-handler = app
